@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HRS构建的系统自定义服务 - 测试控制台</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: #f5f7fa; color: #2c3e50;
+    max-width: 960px; margin: 0 auto; padding: 24px 16px;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #7f8c9a; font-size: 13px; margin-bottom: 20px; }
+  .card {
+    background: #fff; border: 1px solid #e4e9f0; border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .card h2 { font-size: 15px; margin-bottom: 12px; color: #1a5fb4; }
+  label { font-size: 13px; color: #5a6b7b; display: block; margin: 10px 0 4px; }
+  select, textarea, input[type=text] {
+    width: 100%; border: 1px solid #ccd5de; border-radius: 6px;
+    padding: 8px 10px; font-size: 13px; font-family: inherit;
+  }
+  textarea { min-height: 180px; font-family: Consolas, monospace; resize: vertical; }
+  .row { display: flex; gap: 10px; margin-top: 14px; }
+  button {
+    border: 0; border-radius: 6px; padding: 9px 20px;
+    font-size: 14px; cursor: pointer; color: #fff; background: #1a5fb4;
+  }
+  button.secondary { background: #64748b; }
+  button:disabled { opacity: .6; cursor: wait; }
+  pre {
+    background: #f8fafc; border: 1px solid #e4e9f0; border-radius: 8px;
+    padding: 14px; font-size: 12.5px; font-family: Consolas, monospace;
+    white-space: pre-wrap; word-break: break-all; max-height: 420px; overflow: auto;
+  }
+  .ok   { color: #166534; }
+  .err  { color: #b91c1c; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #eef2f6; }
+  th { color: #5a6b7b; font-weight: 600; }
+  td code { color: #1a5fb4; }
+  .hint { font-size: 12px; color: #8a99a8; margin-top: 8px; }
+</style>
+</head>
+<body>
+    <h1>HRS构建的系统自定义服务 · 测试控制台</h1>
+  <div class="sub">Web 后端 API 测试页面 —— 对应服务地址 <span id="baseUrl"></span></div>
+
+  <div class="card">
+    <h2>流程列表（GET /api/flows）</h2>
+    <table id="flowTable">
+      <thead><tr><th style="width:180px">调用名</th><th>FlowId</th><th>说明</th><th style="width:90px">操作</th></tr></thead>
+      <tbody><tr><td colspan="4">加载中…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>调用流程（POST /api/flow/{name}）</h2>
+    <label>选择流程</label>
+    <select id="flowSelect"><option value="">-- 请选择 --</option></select>
+
+    <label>入参 JSON</label>
+    <textarea id="argsJson" spellcheck="false">{}</textarea>
+
+    <div class="row">
+      <button id="btnCall" onclick="callFlow()">调用流程</button>
+      <button class="secondary" onclick="document.getElementById('argsJson').value='{}'">清空入参</button>
+    </div>
+    <div class="hint">提示：body 即流程的 inArgs，需为合法 JSON 字符串。</div>
+  </div>
+
+  <div class="card">
+    <h2>调用结果</h2>
+    <pre id="result">（等待调用）</pre>
+  </div>
+
+<script>
+  const base = location.origin;
+  document.getElementById('baseUrl').textContent = base;
+
+  async function loadFlows() {
+    try {
+      const resp = await fetch(base + '/api/flows');
+      const list = await resp.json();
+      const tbody = document.querySelector('#flowTable tbody');
+      const sel = document.getElementById('flowSelect');
+      tbody.innerHTML = '';
+      list.forEach(f => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td><code>' + f.name + '</code></td><td>' + f.flowId +
+          '</td><td>' + (f.description || '') + '</td>' +
+          '<td><a href="#" onclick="pickFlow(\'' + f.name + '\');return false;">选用</a></td>';
+        tbody.appendChild(tr);
+
+        const opt = document.createElement('option');
+        opt.value = f.name;
+        opt.textContent = f.name + '（' + (f.description || f.flowId) + '）';
+        sel.appendChild(opt);
+      });
+    } catch (e) {
+      document.querySelector('#flowTable tbody').innerHTML =
+        '<tr><td colspan="4" class="err">加载失败：' + e.message + '</td></tr>';
+    }
+  }
+
+  function pickFlow(name) {
+    document.getElementById('flowSelect').value = name;
+    document.getElementById('flowSelect').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  async function callFlow() {
+    const name = document.getElementById('flowSelect').value;
+    const result = document.getElementById('result');
+    const btn = document.getElementById('btnCall');
+    if (!name) { result.textContent = '请先选择流程'; result.className = 'err'; return; }
+
+    const bodyText = document.getElementById('argsJson').value.trim() || '{}';
+    try { JSON.parse(bodyText); }
+    catch (e) { result.textContent = '入参不是合法 JSON：' + e.message; result.className = 'err'; return; }
+
+    btn.disabled = true;
+    result.textContent = '调用中…';
+    result.className = '';
+    try {
+      const resp = await fetch(base + '/api/flow/' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: bodyText
+      });
+      const data = await resp.json();
+      result.textContent = JSON.stringify(data, null, 2);
+      result.className = data.success === false ? 'err' : 'ok';
+    } catch (e) {
+      result.textContent = '请求失败：' + e.message;
+      result.className = 'err';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  loadFlows();
+</script>
+</body>
+</html>
