@@ -225,9 +225,11 @@ namespace FlowRunCode
 
         private static string ToExpression(IEnumerable<Condition> sorted)
         {
+            var list = sorted.ToList();
             var sb = new StringBuilder();
-            foreach (var c in sorted)
+            for (int i = 0; i < list.Count; i++)
             {
+                var c = list[i];
                 string cond;
                 if (c.Op == "∈" || c.Op == "∉")
                 {
@@ -242,7 +244,10 @@ namespace FlowRunCode
                 sb.Append(cond);
                 sb.Append(c.RightParen ?? "");
 
-                if (!string.IsNullOrEmpty(c.Connector))
+                // 兼容：最后一条条件后面不应再有连接器（数据库末行可能误带 AND/OR），
+                // 否则表达式末尾会出现 "... AND"，逆波兰求值时弹空栈报 "Stack empty"。
+                bool isLast = (i == list.Count - 1);
+                if (!isLast && !string.IsNullOrEmpty(c.Connector))
                 {
                     sb.Append(' ');
                     sb.Append(c.Connector.ToUpper());
@@ -266,8 +271,11 @@ namespace FlowRunCode
             var output = new List<RpnNode>();
             var stack = new Stack<string>();   // 只压 '(' 和 AND / OR
 
-            foreach (var cond in sorted)
+            for (int i = 0; i < sorted.Count; i++)
             {
+                var cond = sorted[i];
+                bool isLast = (i == sorted.Count - 1);
+
                 foreach (var ch in (cond.LeftParen ?? ""))
                     if (ch == '(') stack.Push("(");
 
@@ -283,8 +291,9 @@ namespace FlowRunCode
                     }
                 }
 
+                // 兼容：最后一条条件不压连接器（同 ToExpression，防止末尾多余 AND/OR 导致求值时弹空栈）
                 var conn = (cond.Connector ?? "").ToUpper();
-                if (conn.Length > 0)
+                if (!isLast && conn.Length > 0)
                 {
                     while (stack.Count > 0
                            && stack.Peek() != "("
@@ -325,6 +334,8 @@ namespace FlowRunCode
                         st.Push(EvalCond(node.Cond, person));
                     } else
                     {
+                        // 防御：操作数不足时不弹空栈，直接判该规则不命中
+                        if (st.Count < 2) return false;
                         var r = st.Pop();
                         var l = st.Pop();
                         st.Push(node.Op == "AND" ? (l && r) : (l || r));
@@ -392,16 +403,16 @@ namespace FlowRunCode
                     Op = ToStr(row["比较"]),
                     Value = ToStr(row["条件值"]),
                     RightParen = ToStr(row["右括号"]),
-                    Connector = ToStr(row["关系"]),
+                    Connector = ToStr(row["关系"])==""? "AND" : ToStr(row["关系"]),
                     Order = ToInt(row["序号"])
                 };
                 rule.Conditions.Add(cond);
             }
 
-            // —— 对每个规则编译：语法校验 + 生成表达式串 + 求值委托 ——
+            // —— 对每个规则编译：语法校验 + 生成表达式串 + 求值委托 ——-
             foreach (var rule in ruleMap.Values)
             {
-                rule.BuildResult = RuleEngine.Build(rule.Conditions);
+                rule.BuildResult = RuleEngine.Build(rule.Conditions);                
             }
 
             // 按 方案id 排序返回
