@@ -1,5 +1,4 @@
 ﻿using HCSRunTimeLibrary;
-using Oracle.ManagedDataAccess.Client;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -10,23 +9,6 @@ using System.Threading.Tasks;
 
 namespace FlowRunCode
 {
-
-    /// <summary>比较符</summary>
-    public enum CompareOp
-    {
-        Eq,     // =
-        NotEq,  // !=
-        In,     // ∈
-        NotIn   // ∉
-    }
-
-    /// <summary>关系符（连接下一条条件）</summary>
-    public enum LogicConn
-    {
-        And,    // AND
-        Or      // OR
-    }
-
     /// <summary>授权方案</summary>
     public class Plan
     {
@@ -421,14 +403,6 @@ namespace FlowRunCode
             return result;
         }
 
-        /* ==================================================================
-         * ③ 便捷方法：一步到位（内部 = LoadDataTable + MapFromDataTable）
-         * ================================================================== */
-        public List<Plan> LoadAll(DataTable dt)
-        {
-            return MapFromDataTable(dt);
-        }
-
         /* ---------------- 私有工具 ---------------- */
 
         /// <summary>DBNull / null -> ""，否则 ToString().Trim()</summary>
@@ -508,29 +482,16 @@ namespace FlowRunCode
             {
                 return value == null ? null : value.ToString();
             }
-            int userId = 142;
-            string strRoles = "";
-            try
-            {
-                //获取调用服务入参
-                string strTmp = "";
-                strTmp = ToStr(ReadArg("user_name"));
-                context["user_name"] = strTmp;
-                string strUserid = ToStr(ReadArg("user_id"));
-                context["user_id"] = strUserid;
-                if (string.IsNullOrWhiteSpace(strUserid))
-                {
-                    strUserid = "0";
-                }
-                userId = Convert.ToInt32(strUserid);
-            } catch (Exception ex)
-            {
-                throw new Exception("脚本执行失败：" + ex.Message, ex);
-            }
-            bool doNext = true;
-            var access = DBHelpeFactory.New(@"sys_inner_zlhis_admin");
 
-            DataTable dtPerson = new DataTable();
+            // 1. 读取入参
+            string strUserid = ToStr(ReadArg("user_id")) ?? "0";
+            context["user_id"] = strUserid;
+            int userId = Convert.ToInt32(strUserid);
+
+            var access = DBHelpeFactory.New(@"sys_inner_zlhis_admin");
+            string strRoles = "";
+
+            // 2. 查规则配置
             string sql = @"
                 SELECT a.id        AS 方案id,
                        a.名称      AS 方案名,
@@ -553,35 +514,21 @@ namespace FlowRunCode
                  ORDER BY b.方案id, b.id, c.序号";
 
             DataTable dtRules = await access.ExecuteDataTable(sql, 0, null);
-            if (dtRules == null || dtRules.Rows.Count == 0)
+            if (dtRules != null && dtRules.Rows.Count > 0)
             {
-                doNext = false;
-            }
-            if (doNext)
-            {
-                sql = @"select 
-                b.人员性质 工作性质,  
-                a.执业类别,          
-                a.专业技术职务,      
-                a.管理职务,          
-                a.聘任技术职务,   
-                a.人员在岗类型     
-                ,a.id
-                from 人员表 a,人员性质说明 b  
-                where a.id=b.人员id(+) 
-                and a.id=:userId";
+                // 3. 查人员信息
+                sql = @"select b.人员性质 工作性质, a.执业类别, a.专业技术职务, a.管理职务,
+                               a.聘任技术职务, a.人员在岗类型, a.id
+                          from 人员表 a, 人员性质说明 b
+                         where a.id = b.人员id(+)
+                           and a.id = :userId";
 
-                dtPerson = await access.ExecuteDataTable(sql, 0,
+                DataTable dtPerson = await access.ExecuteDataTable(sql, 0,
                     new CustomSqlParam("userId", SqlParamDataType.数字, userId));
 
-                if (dtPerson.Rows.Count == 0)
-                {
-                    doNext = false;
-                }
-            }
+                // 规则只编译一次
+                var plans = new RuleRepository().MapFromDataTable(dtRules);
 
-            if (doNext)
-            { 
                 foreach (DataRow row in dtPerson.Rows)
                 {
                     var person = new Dictionary<string, object>
@@ -593,36 +540,25 @@ namespace FlowRunCode
                         ["工作性质"] = ToStr(row["工作性质"]),
                         ["管理职务"] = ToStr(row["管理职务"]),
                     };
-                    var repo = new RuleRepository();
-                    var plans = repo.LoadAll(dtRules);
 
-                    var hitRules = plans
+                    var hitRoles = plans
                         .SelectMany(p => p.Rules)
                         .Where(r => r.BuildResult.Valid && r.BuildResult.Evaluate(person))
-                        .ToList();
+                        .Select(r => r.RoleResult);
 
-                    string hitRoles = string.Join(",", hitRules.Select(r => r.RoleResult));
-
-                    if (!string.IsNullOrEmpty(hitRoles))
-                    {
-                        strRoles += ',' + hitRoles;
-                    }
+                    strRoles = string.Join(",", new[] { strRoles }.Concat(hitRoles).Where(s => !string.IsNullOrEmpty(s)));
                 }
             }
+
+            // 去重
             if (!string.IsNullOrEmpty(strRoles))
             {
-                string[] arrGranRole = strRoles.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-                strRoles = string.Join(",", arrGranRole.Distinct());
+                strRoles = string.Join(",", strRoles.Split(',').Distinct());
             }
 
             JsonObject outData = new JsonObject { ["result"] = strRoles };
             context.SetParamValue("output", outData);
-            //返回结果
             context.ReturnMsg = context.GetParamValue("output");
-            await this.fa1a15e1b1a147a89892a166d3beacabb(context);
-        }
-        private async Task fa1a15e1b1a147a89892a166d3beacabb(FlowContext context)
-        {
         }
     }
 }
