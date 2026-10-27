@@ -340,7 +340,7 @@ namespace FlowRunCode
 
 
     public class RuleRepository
-    {                  
+    {
         public List<Plan> MapFromDataTable(DataTable dt)
         {
             var planMap = new Dictionary<string, Plan>();
@@ -348,7 +348,7 @@ namespace FlowRunCode
 
             if (dt == null || dt.Rows.Count == 0)
                 return new List<Plan>();
-
+            int int序号 = 0;
             foreach (DataRow row in dt.Rows)
             {
                 // —— 行级字段（每行必有）——
@@ -385,16 +385,17 @@ namespace FlowRunCode
                     Op = ToStr(row["比较"]),
                     Value = ToStr(row["条件值"]),
                     RightParen = ToStr(row["右括号"]),
-                    Connector = ToStr(row["关系"])==""? "AND" : ToStr(row["关系"]),
-                    Order = ToInt(row["序号"])
+                    Connector = ToStr(row["关系"]) == "" ? "AND" : ToStr(row["关系"]),
+                    Order = row.IsNull("序号") ? int序号 : ToInt(row["序号"])
                 };
+                int序号++;
                 rule.Conditions.Add(cond);
             }
 
             // —— 对每个规则编译：语法校验 + 生成表达式串 + 求值委托 ——-
             foreach (var rule in ruleMap.Values)
             {
-                rule.BuildResult = RuleEngine.Build(rule.Conditions);                
+                rule.BuildResult = RuleEngine.Build(rule.Conditions);
             }
 
             // 按 方案id 排序返回
@@ -482,11 +483,11 @@ namespace FlowRunCode
             {
                 return value == null ? null : value.ToString();
             }
-
             // 1. 读取入参
             string strUserid = ToStr(ReadArg("user_id")) ?? "0";
             context["user_id"] = strUserid;
             int userId = Convert.ToInt32(strUserid);
+            List<Dictionary<string, object>> personList = new List<Dictionary<string, object>>();
 
             var access = DBHelpeFactory.New(@"sys_inner_zlhis_admin");
             string strRoles = "";
@@ -526,12 +527,11 @@ namespace FlowRunCode
                 DataTable dtPerson = await access.ExecuteDataTable(sql, 0,
                     new CustomSqlParam("userId", SqlParamDataType.数字, userId));
 
-                // 规则只编译一次
-                var plans = new RuleRepository().MapFromDataTable(dtRules);
+
 
                 foreach (DataRow row in dtPerson.Rows)
                 {
-                    var person = new Dictionary<string, object>
+                    Dictionary<string, object> person = new Dictionary<string, object>
                     {
                         ["专业技术职务"] = ToStr(row["专业技术职务"]),
                         ["执业类别"] = ToStr(row["执业类别"]),
@@ -540,12 +540,45 @@ namespace FlowRunCode
                         ["工作性质"] = ToStr(row["工作性质"]),
                         ["管理职务"] = ToStr(row["管理职务"]),
                     };
+                    personList.Add(person);
+                }
+            }
 
+            if (userId == 0)
+            {
+                string str执业类别 = ToStr(ReadArg("practice_type"));
+                string str专业技术职务 = ToStr(ReadArg("tech_title"));
+                string str管理职务 = ToStr(ReadArg("manage_title"));
+                string str聘任技术职务 = ToStr(ReadArg("appoint_tech_title"));
+                string str人员在岗类型 = ToStr(ReadArg("person_in_post_type"));
+                string str工作性质 = ToStr(ReadArg("work_type"));
+
+                string[] arr工作性质 = str工作性质.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+
+                foreach (string strWorkType in arr工作性质)
+                {
+                    Dictionary<string, object> person = new Dictionary<string, object>
+                    {
+                        ["专业技术职务"] = str专业技术职务,
+                        ["执业类别"] = str执业类别,
+                        ["人员在岗类型"] = str人员在岗类型,
+                        ["聘任技术职务"] = str聘任技术职务,
+                        ["工作性质"] = strWorkType,
+                        ["管理职务"] = str管理职务
+                    };
+                    personList.Add(person);
+                }
+            }
+
+            if (personList.Count > 0)
+            {
+                var plans = new RuleRepository().MapFromDataTable(dtRules);
+                foreach (var person in personList)
+                {
                     var hitRoles = plans
                         .SelectMany(p => p.Rules)
                         .Where(r => r.BuildResult.Valid && r.BuildResult.Evaluate(person))
                         .Select(r => r.RoleResult);
-
                     strRoles = string.Join(",", new[] { strRoles }.Concat(hitRoles).Where(s => !string.IsNullOrEmpty(s)));
                 }
             }

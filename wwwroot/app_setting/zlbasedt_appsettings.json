@@ -1,0 +1,41 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft": "Warning",
+      "Microsoft.Hosting.Lifetime": "Information",
+      "Microsoft.AspNetCore.Session.SessionMiddleware": "Error"
+    }
+  },
+  "Urls": "http://0.0.0.0:5231",
+  "Kestrel": {
+    "EndpointDefaults": {
+      "Protocols": "Http1AndHttp2"
+    }
+  },
+  "ElasticApm": {
+    "Recording": false,
+    "ServerUrl": "http://192.168.9.140:8200/",
+    "ServiceName": "OnePaperCore",
+    "TransactionSampleRate": 0.1,
+    "CloudProvider": "none"
+  },
+  "RedirectUrl": "www.zlsoft.com",
+  "LoginPageShowName": "中联医疗资源服务-hrs",
+  "WebHelperUrl": "http://192.168.0.190:8210",
+  "RptServerUrl": "http://192.168.0.190:8230",
+  "AllowedHosts": "*",
+  "Theme": "",
+  "SSOLoginUrl": "http://192.168.33.101:5001",
+  "EnableSSOAuth": true,
+  "SSOSystemCode": "zlbasedt",
+  "SysDbCode": "hrs_zlhisbasedt",
+  "SSOHomePage": "/basedt/dashboard?id=f1fe1cfc-d03c-4432-b257-67e736627611",
+  "LicenseDirectory": "license",
+  "UDSUrl": "http://192.168.33.101:5001",
+  "UDSAppId": "cd2189e6-11f3-496a-8f6a-93e17bbb5edb",
+  "UDSAppSecret": "YzFjMGQyN2ItODIzNC00NjBlLThhZTktNGY3MWJjY2M3MjNk",
+  "UseFileCache": true,
+  "IsFileCrtToken": false,
+  "IsRecordLog": true
+}
