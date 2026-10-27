@@ -8,10 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="C:\Users\Administrator\Documents\Tencent Files\469843828\FileRecv\appsettings.json" Link="wwwroot\app_setting\appsettings.json" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="HCSRunTimeLibrary" Version="1.1.0" />
   </ItemGroup>
 
